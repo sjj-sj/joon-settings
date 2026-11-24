@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "engines": [
+    {
+      "name": "youtube.com",
+      "shortcut": "yt",
+      "url": "https://www.youtube.com/results?search_query={searchTerms}",
+      "favicon_url": "",
+      "suggest_url": "",
+      "input_encodings": "",
+      "originating_url": ""
+    },
+    {
+      "name": "네이버",
+      "shortcut": "nv",
+      "url": "https://search.naver.com/search.naver?ie={inputEncoding}&query={searchTerms}&sm=chr_hty",
+      "favicon_url": "",
+      "suggest_url": "",
+      "input_encodings": "",
+      "originating_url": ""
+    },
+    {
+      "name": "네이버 지도",
+      "shortcut": "map",
+      "url": "https://map.naver.com/p/search/{searchTerms}",
+      "favicon_url": "",
+      "suggest_url": "",
+      "input_encodings": "",
+      "originating_url": ""
+    },
+    {
+      "name": "호갱노노",
+      "shortcut": "hg",
+      "url": "https://www.google.com/search?q=site:hogangnono.com+{searchTerms}",
+      "favicon_url": "",
+      "suggest_url": "",
+      "input_encodings": "",
+      "originating_url": ""
+    },
+    {
+      "name": "번역",
+      "shortcut": "translate",
+      "url": "https://www.deepl.com/translator#en/ko/{searchTerms}",
+      "favicon_url": "",
+      "suggest_url": "",
+      "input_encodings": "",
+      "originating_url": ""
+    },
+    {
+      "name": "주식",
+      "shortcut": "st",
+      "url": "https://www.google.com/search?q={searchTerms}+주가",
+      "favicon_url": "",
+      "suggest_url": "",
+      "input_encodings": "",
+      "originating_url": ""
+    }
+  ]
+}

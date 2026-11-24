@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == --clock-pane ]]; then
+  sleep 0.3
+  exec "$HOME/.local/bin/tclock" -n
+fi
+
+if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+  printf '사용법: ztoy [off]\n  ztoy      현재 탭 오른쪽에 cava 위, 시계 아래 pane 추가\n  ztoy off  추가한 두 pane 닫기\n'
+  exit 0
+fi
+
+if [[ -z "${ZELLIJ_SESSION_NAME:-}" || -z "${ZELLIJ_PANE_ID:-}" ]]; then
+  printf 'ztoy: 현재 Zellij 세션 안에서 실행해야 합니다.\n' >&2
+  exit 1
+fi
+
+zellij_bin="$(command -v zellij)"
+jq_bin="$(command -v jq)"
+tab_id="$("$zellij_bin" action current-tab-info --json | "$jq_bin" -r '.tab_id')"
+panes_json="$("$zellij_bin" action list-panes --json --all)"
+cava_pane="$("$jq_bin" -r --argjson tab_id "$tab_id" '[.[] | select(.tab_id == $tab_id and (.is_plugin | not) and (.title == "cava" or ((.pane_command // "") | test("(^|/)cava( |$)"))))] | first | .id // empty' <<<"$panes_json")"
+clock_pane="$("$jq_bin" -r --argjson tab_id "$tab_id" '[.[] | select(.tab_id == $tab_id and (.is_plugin | not) and (.title == "clock" or .title == "tclock" or ((.pane_command // "") | contains("tty-clock"))))] | first | .id // empty' <<<"$panes_json")"
+
+if [[ "${1:-}" == off || "${1:-}" == --close ]]; then
+  if [[ -z "$cava_pane" && -z "$clock_pane" ]]; then
+    printf 'ztoy: 현재 탭에 닫을 cava / tclock pane이 없습니다.\n'
+    exit 0
+  fi
+  [[ -z "$clock_pane" ]] || "$zellij_bin" action close-pane --pane-id "$clock_pane"
+  [[ -z "$cava_pane" ]] || "$zellij_bin" action close-pane --pane-id "$cava_pane"
+  printf 'ztoy: cava + tclock pane을 닫았습니다.\n'
+  exit 0
+fi
+
+if [[ -n "${1:-}" ]]; then
+  printf "ztoy: 모르는 인자 '%s'\n" "$1" >&2
+  exit 1
+fi
+
+if [[ -n "$cava_pane" && -n "$clock_pane" ]]; then
+  printf 'ztoy: 현재 탭에 cava + tclock pane이 이미 있습니다.\n'
+  exit 0
+fi
+
+if [[ -n "$cava_pane" ]]; then
+  "$zellij_bin" action focus-pane-id "$cava_pane" >/dev/null 2>&1 || true
+  sleep 0.3
+  "$zellij_bin" action new-pane --direction down --name clock --close-on-exit -- "$HOME/.local/bin/ztoy" --clock-pane >/dev/null
+  exit 0
+fi
+
+"$zellij_bin" action new-pane --direction right --name cava --close-on-exit -- /usr/bin/env "XDG_RUNTIME_DIR=/run/user/$(id -u)" cava >/dev/null
+sleep 0.3
+"$zellij_bin" action new-pane --direction down --name clock --close-on-exit -- "$HOME/.local/bin/ztoy" --clock-pane >/dev/null

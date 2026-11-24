@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:$PATH"
+
+saver="${SAVER:-$HOME/.local/bin/saver}"
+tmux_bin="$(command -v tmux)"
+
+if [[ "${1:-}" == --session ]]; then
+  socket="$2"
+  first="$3"
+  second="$4"
+  printf -v first_cmd '%q %q' "$saver" "$first"
+  printf -v second_cmd '%q %q' "$saver" "$second"
+  exec "$tmux_bin" -L "$socket" -f /dev/null \
+    new-session -s saverwall "$first_cmd" \; \
+    set-option -g status off \; \
+    set-option -g destroy-unattached on \; \
+    set-option -g pane-border-style fg=colour238 \; \
+    set-option -g pane-active-border-style fg=colour238 \; \
+    split-window -v "$second_cmd" \; \
+    select-layout even-vertical \; \
+    select-pane -t 0
+fi
+
+first="${1:-}"
+second="${2:-}"
+if [[ -z "$first" ]]; then
+  first="$(SAVER_EXCLUDE=hollywood "$saver" --pick)"
+fi
+if [[ -z "$second" ]]; then
+  second="$(SAVER_EXCLUDE="hollywood,$first" "$saver" --pick)"
+fi
+
+title="saverwall-$$"
+socket="saverwall-$$"
+alacritty_bin="$(command -v alacritty)"
+setsid_bin="$(command -v setsid)"
+python_bin="$(command -v python3)"
+"$setsid_bin" -f "$alacritty_bin" \
+  --class SaverWall,SaverWall \
+  --title "$title" \
+  --option 'window.dynamic_title=false' \
+  --option 'window.decorations="None"' \
+  --option 'window.padding.x=0' \
+  --option 'window.padding.y=0' \
+  --command "$0" --session "$socket" "$first" "$second" \
+  >/dev/null 2>&1
+
+exec "$python_bin" - "$title" <<'PY'
+import sys
+import time
+
+from Xlib import X, Xatom, display, error, protocol
+from Xlib.ext import xinerama
+
+xdisplay = display.Display()
+root = xdisplay.screen().root
+title = sys.argv[1]
+deadline = time.monotonic() + 5
+window = None
+
+while time.monotonic() < deadline and window is None:
+    for candidate in root.query_tree().children:
+        try:
+            if candidate.get_wm_name() == title:
+                window = candidate
+                break
+        except error.BadWindow:
+            continue
+    time.sleep(0.05)
+
+if window is None:
+    raise RuntimeError(f"Alacritty window not found: {title}")
+
+screens = xinerama.query_screens(xdisplay).screens
+top = min(range(len(screens)), key=lambda index: screens[index].y)
+bottom = max(range(len(screens)), key=lambda index: screens[index].y + screens[index].height)
+left = min(range(len(screens)), key=lambda index: screens[index].x)
+right = max(range(len(screens)), key=lambda index: screens[index].x + screens[index].width)
+fullscreen = xdisplay.intern_atom("_NET_WM_STATE_FULLSCREEN")
+wm_state = xdisplay.intern_atom("_NET_WM_STATE")
+fullscreen_monitors = xdisplay.intern_atom("_NET_WM_FULLSCREEN_MONITORS")
+
+time.sleep(0.5)
+for _ in range(5):
+    root.send_event(
+        protocol.event.ClientMessage(
+            window=window.id,
+            client_type=fullscreen_monitors,
+            data=(32, [top, bottom, left, right, 1]),
+        ),
+        event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
+    )
+    root.send_event(
+        protocol.event.ClientMessage(
+            window=window.id,
+            client_type=wm_state,
+            data=(32, [1, fullscreen, 0, 1, 0]),
+        ),
+        event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
+    )
+    xdisplay.sync()
+    time.sleep(0.2)
+    state = window.get_full_property(wm_state, Xatom.ATOM)
+    if state is not None and fullscreen in state.value:
+        break
+else:
+    raise RuntimeError(f"Fullscreen request was ignored: {title}")
+PY

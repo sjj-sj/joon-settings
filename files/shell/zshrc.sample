@@ -1,0 +1,57 @@
+# Copy the settings you use into ~/.zshrc.
+
+# ── oh-my-zsh ──────────────────────────────────────────────────────────────
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="random"        # random theme each shell; pin a name if you want reproducibility
+
+plugins=(
+  git
+  zsh-syntax-highlighting
+  zsh-autosuggestions
+  zsh-z
+  extract
+)
+source "$ZSH/oh-my-zsh.sh"
+
+# zsh-autosuggestions: accept with Ctrl+Space (Right-Arrow left free)
+bindkey '^ ' autosuggest-accept
+
+# ── base env / PATH ──────────────────────────────────────────────────────────
+export PATH="$HOME/.local/bin:$PATH"
+export LANG=en_US.UTF-8
+if [[ -n $SSH_CONNECTION ]]; then export EDITOR='vim'; else export EDITOR='nvim'; fi
+
+# Load installed shell modules
+for file in ~/.zsh/my-zshrc/*.zsh(N); do source "$file"; done
+
+# nvm
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# ── quality-of-life aliases ──────────────────────────────────────────────────
+alias vi=nvim
+alias rm='trash-put'                       # safe rm (needs trash-cli)
+alias git='LD_LIBRARY_PATH="" git'         # use system ssh even inside conda envs
+alias dc="docker-compose"
+alias k="kubectl"
+alias uvr="uv run"
+alias activate="source .venv/bin/activate"
+alias lt='ls -ltrh'   # by mtime, newest last
+alias lat='ls -ltrah' # +hidden
+alias lsz='ls -lShr'  # by size, largest last
+alias ff=fastfetch
+
+# log a command's output to a timestamped file
+function logit() {
+    local filename="$(date +"%y%m%d%H%M")_capture_$1.txt"
+    echo "Logging output to $filename"; "$@" | tee "$filename"
+}
+
+# listening ports helper: `ports` = all, `port N` = who owns port N
+alias ports='ss -tulpn'
+port() {
+  if command -v lsof >/dev/null 2>&1; then sudo lsof -i :"$1" -P -n; else ss -tulpn "sport = :$1"; fi
+}

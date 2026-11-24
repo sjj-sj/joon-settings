@@ -1,0 +1,13 @@
+hide_hud = false
+silent = true
+
+[location]
+auto = true
+hide = false
+display = "city"
+city_name_language = "ko"
+
+[units]
+temperature = "celsius"
+wind_speed = "kmh"
+precipitation = "mm"

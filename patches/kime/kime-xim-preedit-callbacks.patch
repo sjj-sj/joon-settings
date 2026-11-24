@@ -1,0 +1,44 @@
+diff --git a/src/frontends/xim/src/handler.rs b/src/frontends/xim/src/handler.rs
+index 56537d7..4f5144c 100644
+--- a/src/frontends/xim/src/handler.rs
++++ b/src/frontends/xim/src/handler.rs
+@@ -292,6 +292,16 @@ impl<C: HasConnection> ServerHandler<X11rbServer<C>> for KimeHandler {
+     ) -> Result<(), xim::ServerError> {
+         log::debug!("spot: {:?}", user_ic.ic.preedit_spot());
+ 
++        // Client draws preedit itself; redrawing here makes clients that report
++        // the preedit-shifted cursor as the new spot (e.g. Zed) loop forever.
++        if user_ic
++            .ic
++            .input_style()
++            .contains(InputStyle::PREEDIT_CALLBACKS)
++        {
++            return Ok(());
++        }
++
+         self.clear_preedit(server, user_ic)?;
+         self.preedit(server, user_ic)?;
+ 
+@@ -367,6 +377,22 @@ impl<C: HasConnection> ServerHandler<X11rbServer<C>> for KimeHandler {
+                 .user_data
+                 .engine
+                 .press_key(Key::new(keycode, state), &self.config);
++            // Under load, clients can reorder consecutive XIM messages, so a commit
++            // followed by the forwarded space arrives as " 요". Send them as one commit.
++            if keycode == KeyCode::Space
++                && state.is_empty()
++                && ret.contains(InputResult::HAS_COMMIT)
++                && !ret.contains(InputResult::HAS_PREEDIT)
++                && !ret.contains(InputResult::CONSUMED)
++            {
++                self.clear_preedit(server, user_ic)?;
++                let s = format!("{} ", user_ic.user_data.engine.commit_str());
++                server.commit(&user_ic.ic, &s)?;
++                user_ic.user_data.engine.clear_commit();
++                user_ic.user_data.engine_ready = !ret.contains(InputResult::NOT_READY);
++                return Ok(true);
++            }
++
+             self.process_input_result(server, user_ic, ret)
+         } else {
+             log::warn!("Unknown hardware keycode: {}", xev.detail);

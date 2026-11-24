@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+사용법: listen [옵션] <곡명 또는 URL>
+        listen --likes
+        listen add
+        listen history
+
+곡명을 YouTube에서 검색해 첫 번째 결과의 오디오를 재생한다.
+
+예시:
+  listen "Fall Out Boy The Phoenix"
+  listen https://www.youtube.com/watch?v=vRNXllg77Zo
+  listen add
+  listen history
+
+명령:
+  add      마지막으로 재생한 곡을 like에 추가한다
+  history  최근 재생 목록에서 곡을 골라 like에 추가한다
+
+옵션:
+  --likes     like에 기록된 음악을 표시한다
+  -h, --help  이 도움말을 표시한다
+
+재생 중 Ctrl-C를 누르면 종료한다.
+TTY 재생 화면에서는 Space 일시정지, ←/→ 5초 이동, ↑/↓ 볼륨, a like 추가, q 종료.
+EOF
+}
+
+script_dir() {
+    local source_path=${BASH_SOURCE[0]}
+    local source_dir
+
+    while [[ -L "$source_path" ]]; do
+        source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+        source_path=$(readlink -- "$source_path")
+        [[ "$source_path" == /* ]] || source_path="$source_dir/$source_path"
+    done
+
+    cd -P -- "$(dirname -- "$source_path")" && pwd
+}
+
+project_dir() {
+    local directory=${LISTEN_LIKE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/listen}
+    if [[ ! -d "$directory/music" ]]; then
+        echo "like 음악 폴더를 찾을 수 없음: $directory/music" >&2
+        echo '다른 위치라면 LISTEN_LIKE_DIR를 설정해 주세요.' >&2
+        exit 1
+    fi
+    cd -- "$directory" && pwd
+}
+
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/listen
+state_helper="$(script_dir)/listen_library.py"
+player_helper="$(script_dir)/listen_player.py"
+
+save_last_played() {
+    python3 "$state_helper" remember \
+        "$state_dir" \
+        "$media_title" \
+        "$media_artist" \
+        "$media_track" \
+        "$media_uploader" \
+        "$webpage_url"
+}
+
+add_last_like() {
+    local directory
+    directory=$(project_dir) || return
+    python3 "$state_helper" add-last "$state_dir" "$directory/music"
+}
+
+show_history() {
+    local music_dir selections
+    local -a history_ids
+    music_dir="$(project_dir)/music"
+
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        python3 "$state_helper" history-lines "$state_dir"
+        return
+    fi
+
+    if ! command -v fzf >/dev/null; then
+        python3 "$state_helper" history-lines "$state_dir"
+        echo 'fzf를 찾지 못해 목록만 표시함.' >&2
+        return
+    fi
+
+    if ! selections=$(
+        python3 "$state_helper" history-lines "$state_dir" |
+            fzf \
+                --multi \
+                --no-sort \
+                --layout=reverse \
+                --height=80% \
+                --border \
+                --delimiter=$'\t' \
+                --bind='space:toggle+down' \
+                --prompt='history> ' \
+                --pointer='▶' \
+                --marker='✓' \
+                --header='↑↓/j/k 이동, Space 여러 곡 선택, Enter like 추가, Esc 취소'
+    ); then
+        return
+    fi
+
+    mapfile -t history_ids < <(printf '%s\n' "$selections" | cut -f1)
+    (( ${#history_ids[@]} > 0 )) || return
+    python3 "$state_helper" add-history \
+        "$state_dir" \
+        "$music_dir" \
+        "${history_ids[@]}"
+}
+
+list_likes() {
+    local project_dir music_dir file filename entry
+    local -a entries=()
+
+    project_dir=$(project_dir)
+    music_dir="$project_dir/music"
+
+    while IFS= read -r -d '' file; do
+        filename=${file##*/}
+        case "$filename" in
+            README.md|to-listen.md) continue ;;
+        esac
+
+        entry=$(awk '
+            /^# / && title == "" { title = substr($0, 3) }
+            /^- 아티스트: / { artist = substr($0, length("- 아티스트: ") + 1) }
+            END {
+                if (title != "" && artist != "") print artist " - " title
+                else if (title != "") print title
+            }
+        ' "$file")
+        [[ -n "$entry" ]] && entries+=("$entry")
+    done < <(find "$music_dir" -maxdepth 1 -type f -name '*.md' -print0 | sort -z)
+
+    printf '좋아하는 음악 (%d곡)\n' "${#entries[@]}"
+    local index
+    for index in "${!entries[@]}"; do
+        printf '%d. %s\n' "$((index + 1))" "${entries[$index]}"
+    done
+}
+
+while (( $# > 0 )); do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --likes)
+            list_likes
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "알 수 없는 옵션: $1" >&2
+            echo "도움말: listen --help" >&2
+            exit 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if (( $# == 0 )); then
+    usage >&2
+    exit 2
+fi
+
+if [[ "$1" == add ]]; then
+    if (( $# != 1 )); then
+        echo '사용법: listen add' >&2
+        exit 2
+    fi
+    add_last_like
+    exit 0
+fi
+
+if [[ "$1" == history ]]; then
+    if (( $# != 1 )); then
+        echo '사용법: listen history' >&2
+        exit 2
+    fi
+    show_history
+    exit 0
+fi
+
+for command_name in yt-dlp cvlc; do
+    if ! command -v "$command_name" >/dev/null; then
+        echo "필요한 명령을 찾을 수 없음: $command_name" >&2
+        exit 1
+    fi
+done
+
+case "$1" in
+    http://*|https://*) source_url="$1" ;;
+    *) source_url="ytsearch1:$*" ;;
+esac
+
+mapfile -t media_info < <(
+    yt-dlp \
+        --no-playlist \
+        --no-warnings \
+        --js-runtimes node \
+        --format bestaudio \
+        --print '%(title)s' \
+        --print '%(artist)s' \
+        --print '%(track)s' \
+        --print '%(uploader)s' \
+        --print '%(webpage_url)s' \
+        --output-na-placeholder '' \
+        --get-url \
+        "$source_url"
+)
+
+if (( ${#media_info[@]} < 6 )); then
+    echo "재생할 오디오를 찾지 못함: $*" >&2
+    exit 1
+fi
+
+media_title=$(printf '%s' "${media_info[0]}" | tr -d '[:cntrl:]')
+media_artist=$(printf '%s' "${media_info[1]}" | tr -d '[:cntrl:]')
+media_track=$(printf '%s' "${media_info[2]}" | tr -d '[:cntrl:]')
+media_uploader=$(printf '%s' "${media_info[3]}" | tr -d '[:cntrl:]')
+webpage_url=$(printf '%s' "${media_info[4]}" | tr -d '[:cntrl:]')
+media_url=${media_info[${#media_info[@]} - 1]}
+save_last_played
+
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+if [[ -S "$runtime_dir/pulse/native" ]]; then
+    export XDG_RUNTIME_DIR="$runtime_dir"
+    export PULSE_SERVER="unix:$runtime_dir/pulse/native"
+fi
+export PULSE_LATENCY_MSEC=${PULSE_LATENCY_MSEC:-80}
+
+echo "재생: $media_title" >&2
+if [[ -t 1 ]]; then
+    printf '\033]0;♫ %s\007' "$media_title" > /dev/tty
+fi
+if [[ -t 0 && -t 1 ]]; then
+    directory=$(project_dir) || exit
+    python3 "$player_helper" \
+        "$media_title" \
+        "$webpage_url" \
+        "$media_url" \
+        "$state_dir" \
+        "$directory/music" \
+        "$state_helper"
+else
+    cvlc \
+        --intf dummy \
+        --play-and-exit \
+        --no-video \
+        --network-caching=2500 \
+        --quiet \
+        "$media_url"
+fi

@@ -1,0 +1,14 @@
+#!/bin/sh
+# zellij servers outlive X logins; the inherited DISPLAY can point at a dead display number.
+if ! xdpyinfo >/dev/null 2>&1; then
+    for s in /tmp/.X11-unix/X*; do
+        [ -O "$s" ] || continue
+        d=":${s#/tmp/.X11-unix/X}"
+        if DISPLAY=$d xdpyinfo >/dev/null 2>&1; then
+            DISPLAY=$d
+            export DISPLAY
+            break
+        fi
+    done
+fi
+exec xsel --clipboard --input

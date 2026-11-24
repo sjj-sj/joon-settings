@@ -1,0 +1,34 @@
+block 1 1
+padding 0 0
+margin 0 0
+ratio 2 1
+date-padding 1
+fill-active '#'
+fill-inactive ''
+fill-colon ':'
+locale ''
+timezone 'Asia/Seoul'
+date '%Y-%m-%d %A'
+mode clock
+view digital
+toggle padding
+rate-input 50
+rate-refresh 250
+rate-status 3000
+set hour-24 on
+set seconds on
+set date on
+set auto-size on
+set auto-ratio on
+style active-fg party
+style inactive-fg #16323a
+style colon-fg #4feae7
+style active-bg clear
+style inactive-bg clear
+style colon-bg clear
+style date #4feae7
+style background #101418
+style text #4feae7
+style prompt #4feae7
+style success #89e051
+style error #f34b7d

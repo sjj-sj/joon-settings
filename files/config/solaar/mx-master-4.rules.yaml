@@ -1,0 +1,25 @@
+---
+- Device: MX Master 4
+- MouseGesture: [Mouse Gesture Button]
+- KeyPress: Super_L
+---
+- Device: MX Master 4
+- MouseGesture: [Mouse Gesture Button, Mouse Left]
+- KeyPress: [Super_L, Page_Up]
+---
+- Device: MX Master 4
+- MouseGesture: [Mouse Gesture Button, Mouse Right]
+- KeyPress: [Super_L, Page_Down]
+---
+- Device: MX Master 4
+- MouseGesture: [Mouse Gesture Button, Mouse Up]
+- KeyPress: [Super_L, Up]
+---
+- Device: MX Master 4
+- MouseGesture: [Mouse Gesture Button, Mouse Down]
+- KeyPress: [Super_L, Down]
+---
+- Device: MX Master 4
+- Key: [Haptic, pressed]
+- KeyPress: Print
+...

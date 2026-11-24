@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+사용법: zcava [toggle|on|off]
+
+현재 Zellij 탭의 왼쪽 pane 아래에 Cava pane을 켜거나 끈다.
+기본 높이는 5줄이며 ZCAVA_HEIGHT로 바꿀 수 있다.
+EOF
+}
+
+case "${1:-toggle}" in
+  toggle|on|off) mode="${1:-toggle}" ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+if [[ -z "${ZELLIJ_SESSION_NAME:-}" || -z "${ZELLIJ_PANE_ID:-}" ]]; then
+  printf 'zcava: 현재 Zellij 세션 안에서 실행해야 합니다.\n' >&2
+  exit 1
+fi
+
+for command_name in zellij jq cava; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    printf 'zcava: 필요한 명령을 찾을 수 없음: %s\n' "$command_name" >&2
+    exit 1
+  fi
+done
+
+if [[ ! "${ZCAVA_HEIGHT:-5}" =~ ^[0-9]+$ ]] || (( ${ZCAVA_HEIGHT:-5} < 3 )); then
+  printf 'zcava: ZCAVA_HEIGHT는 3 이상의 정수여야 합니다.\n' >&2
+  exit 2
+fi
+
+zellij_bin="$(command -v zellij)"
+jq_bin="$(command -v jq)"
+cava_bin="$(command -v cava)"
+cava_config=${ZCAVA_CONFIG:-$HOME/.config/cava/zcava.conf}
+panes_json="$("$zellij_bin" action list-panes --json --all)"
+caller_pane_id=${ZELLIJ_PANE_ID#terminal_}
+tab_id="$(
+  "$jq_bin" -r --arg caller_pane_id "$caller_pane_id" '
+    [.[] | select(
+      (.is_plugin | not) and
+      ((.id | tostring) == $caller_pane_id)
+    )] | first | .tab_id // empty
+  ' <<<"$panes_json"
+)"
+if [[ -z "$tab_id" ]]; then
+  tab_id="$("$zellij_bin" action current-tab-info --json | "$jq_bin" -r '.tab_id')"
+fi
+footer_pane="$(
+  "$jq_bin" -r --argjson tab_id "$tab_id" --arg cava_config "$cava_config" '
+    [.[] | select(
+      .tab_id == $tab_id and
+      (.is_plugin | not) and
+      (
+        .title == "cava-footer" or
+        ((.pane_command // "") | contains($cava_config))
+      )
+    )] | first | .id // empty
+  ' <<<"$panes_json"
+)"
+
+focus_work_pane() {
+  local current_panes work_pane
+  current_panes="$("$zellij_bin" action list-panes --json --all)"
+  work_pane="$(
+    "$jq_bin" -r \
+      --argjson tab_id "$tab_id" \
+      --arg caller_pane_id "$caller_pane_id" \
+      --arg cava_config "$cava_config" '
+        [.[] | select(
+          .tab_id == $tab_id and
+          (.is_plugin | not) and
+          (.is_floating | not) and
+          ((.id | tostring) != $caller_pane_id) and
+          .title != "cava-footer" and
+          (((.pane_command // "") | contains($cava_config)) | not)
+        )] | sort_by(.pane_rows * .pane_columns) | last | .id // empty
+      ' <<<"$current_panes"
+  )"
+  if [[ -n "$work_pane" ]]; then
+    "$zellij_bin" action focus-pane-id "$work_pane" >/dev/null
+  fi
+}
+
+if [[ -n "$footer_pane" ]]; then
+  if [[ "$mode" != on ]]; then
+    "$zellij_bin" action close-pane --pane-id "$footer_pane"
+    focus_work_pane
+    printf 'zcava: Cava footer를 닫았습니다.\n'
+  fi
+  exit 0
+fi
+
+if [[ "$mode" == off ]]; then
+  exit 0
+fi
+
+target_pane="$(
+  "$jq_bin" -r --argjson tab_id "$tab_id" --arg cava_config "$cava_config" '
+    [.[] | select(
+      .tab_id == $tab_id and
+      (.is_plugin | not) and
+      (.is_floating | not) and
+      .title != "cava-footer" and
+      (((.pane_command // "") | contains($cava_config)) | not)
+    )] | sort_by(.pane_x, .pane_y) | first | .id // empty
+  ' <<<"$panes_json"
+)"
+if [[ -z "$target_pane" ]]; then
+  printf 'zcava: 분할할 왼쪽 pane을 찾지 못했습니다.\n' >&2
+  exit 1
+fi
+
+height=${ZCAVA_HEIGHT:-5}
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+command_args=(/usr/bin/env "XDG_RUNTIME_DIR=$runtime_dir")
+if [[ -S "$runtime_dir/pulse/native" ]]; then
+  command_args+=("PULSE_SERVER=unix:$runtime_dir/pulse/native")
+fi
+command_args+=("$cava_bin")
+if [[ -f "$cava_config" ]]; then
+  command_args+=(-p "$cava_config")
+fi
+
+"$zellij_bin" action focus-pane-id "$target_pane" >/dev/null
+footer_pane="$("$zellij_bin" action new-pane \
+  --direction down \
+  --borderless true \
+  --name cava-footer \
+  --close-on-exit \
+  -- "${command_args[@]}")"
+footer_pane_id=${footer_pane#terminal_}
+for _ in {1..40}; do
+  pane_rows="$(
+    "$zellij_bin" action list-panes --json --all |
+      "$jq_bin" -r --arg footer_pane_id "$footer_pane_id" '
+        [.[] | select(
+          (.is_plugin | not) and
+          ((.id | tostring) == $footer_pane_id)
+        )] | first | .pane_rows // empty
+      '
+  )"
+  [[ -n "$pane_rows" ]] || break
+  (( pane_rows <= height )) && break
+  "$zellij_bin" action resize decrease up --pane-id "$footer_pane" >/dev/null
+done
+focus_work_pane
+printf 'zcava: 왼쪽 아래 Cava pane을 열었습니다.\n'

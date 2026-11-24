@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Saver Wall
+GenericName=Terminal Screensaver Wall
+Comment=Run two terminal screensavers across all monitors
+Exec=@HOME@/.local/bin/saverwall
+Icon=saverwall
+Terminal=false
+Categories=Utility;
+Keywords=terminal;screensaver;saver;wall;multi-monitor;
+StartupNotify=false

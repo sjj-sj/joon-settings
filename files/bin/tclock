@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec "$HOME/.local/bin/tty-clock" -s -c -b -C 6 -f '%Y-%m-%d %A' "$@"

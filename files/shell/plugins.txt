@@ -1,0 +1,6 @@
+# oh-my-zsh custom plugins — git clone each into $ZSH_CUSTOM/plugins/<name>
+# (installed by scripts/install-omz.sh). Enabled in .zshrc `plugins=(...)`.
+zsh-autosuggestions      https://github.com/zsh-users/zsh-autosuggestions
+zsh-syntax-highlighting  https://github.com/zsh-users/zsh-syntax-highlighting
+zsh-z                    https://github.com/agkozak/zsh-z
+# `git` and `extract` are built-in oh-my-zsh plugins (no clone needed).

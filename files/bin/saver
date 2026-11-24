@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -uo pipefail
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/games:$PATH"
+
+main() {
+  local C_NAME=$'\e[93m' C_DESC=$'\e[2m' C_HEAD=$'\e[1;96m' C_OK=$'\e[92m' C_NO=$'\e[91m' R=$'\e[0m'
+  local -a defs=(
+    "matrix|cmatrix -ab|매트릭스 빗줄기"
+    "bonsai|cbonsai -li -t 0.03|자라나는 분재"
+    "nyan|nyancat|무지개 냥캣 비행"
+    "fire|cacafire|ASCII 불꽃"
+    "pipes|pipes.sh|파이프 스크린세이버"
+    "pipes3d|terminal-toys pipes3d|3D 파이프 미로"
+    "balls|terminal-toys balls|점성있는 바운싱 볼"
+    "sand|terminal-toys sand|쏟아지는 모래 물리"
+    "life|terminal-toys life|콘웨이 생명 게임"
+    "tunnel|terminal-toys tunnel|회전하는 3D 터널"
+    "ant|terminal-toys ant|랭턴의 개미"
+    "bubble|terminal-toys bubble|버블 우주"
+    "cube|terminal-toys cube|사인파 3D 큐브"
+    "rings|terminal-toys rings|흐르는 링 구체"
+    "splits|terminal-toys splits|분열하는 선"
+    "stars|astroterm -ucC -s 2500 -f 30 -i Seoul|실시간 별자리 플라네타리움"
+    "busy|genact -s 2|엄청 바쁜 척하는 가짜 작업 로그"
+    "train|sl -e|증기기관차 (ls 오타 벌칙)"
+    "cava|cava|오디오 반응 비주얼라이저 (마이크/음악에 춤춤)"
+    "hollywood|hollywood|해커 영화 멀티패널"
+    "bb|bb|aalib 전설의 ASCII 데모"
+    "aquarium|asciiquarium|물고기 어항"
+    "parrot|curl -s parrot.live|춤추는 파티 앵무새 (외부 curl)"
+  )
+  local arg="${1:-}" d name cmd desc bin pick_only=0
+
+  is_excluded() {
+    local excluded=",${SAVER_EXCLUDE:-},"
+    excluded="${excluded// /,}"
+    [[ "$excluded" == *",$1,"* ]]
+  }
+
+  if [[ "$arg" == help || "$arg" == -h || "$arg" == --help ]]; then
+    printf '%s╭─ saver%s %s— 스크린세이버 런처   saver <이름> | saver help%s\n' "$C_HEAD" "$R" "$C_DESC" "$R"
+    for d in "${defs[@]}"; do
+      name="${d%%|*}"
+      cmd="${d#*|}"; cmd="${cmd%|*}"
+      desc="${d##*|}"
+      bin="${cmd%% *}"
+      if command -v "$bin" >/dev/null 2>&1; then
+        printf '  %s●%s %s%-9s%s %s%s%s\n' "$C_OK" "$R" "$C_NAME" "$name" "$R" "$C_DESC" "$desc" "$R"
+      else
+        printf '  %s○%s %s%-9s%s %s%s (미설치)%s\n' "$C_NO" "$R" "$C_NAME" "$name" "$R" "$C_DESC" "$desc" "$R"
+      fi
+    done
+    printf '%s  ● 설치됨  ○ 미설치   종료: 보통 q, 안 되면 Ctrl-C%s\n' "$C_DESC" "$R"
+    return
+  fi
+
+  if [[ "$arg" == --pick ]]; then
+    pick_only=1
+  fi
+
+  if [[ -z "$arg" || "$arg" == random || "$pick_only" == 1 ]]; then
+    local -a avail=()
+    for d in "${defs[@]}"; do
+      name="${d%%|*}"
+      cmd="${d#*|}"; cmd="${cmd%|*}"
+      bin="${cmd%% *}"
+      is_excluded "$name" && continue
+      command -v "$bin" >/dev/null 2>&1 && avail+=("$name")
+    done
+    if (( ${#avail[@]} == 0 )); then
+      printf 'saver: 설치된 게 없음\n' >&2
+      return 1
+    fi
+    arg="${avail[RANDOM % ${#avail[@]}]}"
+    if (( pick_only )); then
+      printf '%s\n' "$arg"
+      return
+    fi
+    printf '%s→ %s%s\n' "$C_DESC" "$arg" "$R"
+  fi
+
+  for d in "${defs[@]}"; do
+    name="${d%%|*}"
+    cmd="${d#*|}"; cmd="${cmd%|*}"
+    bin="${cmd%% *}"
+    if [[ "$name" == "$arg" ]]; then
+      if ! command -v "$bin" >/dev/null 2>&1; then
+        printf "saver: '%s' 미설치 (필요: %s)\n" "$name" "$bin" >&2
+        return 1
+      fi
+      eval "$cmd"
+      return
+    fi
+  done
+
+  printf "saver: 모르는 이름 '%s' — 'saver help'로 목록 확인\n" "$arg" >&2
+  return 1
+}
+
+main "$@"

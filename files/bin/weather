@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+  printf '사용법: weather [--now|--today] [지역]\n예시: weather, weather 부산, weather --now, weather --today "New York"\n'
+  exit 0
+fi
+
+mode=forecast
+case "${1:-}" in
+  -n|--now)
+    mode=now
+    shift
+    ;;
+  -t|--today)
+    mode=today
+    shift
+    ;;
+esac
+
+location="${*:-Suwon}"
+jq_bin="$(command -v jq)"
+curl_bin="$(command -v curl)"
+encoded="$("$jq_bin" -nr --arg location "$location" '$location | @uri')"
+
+case "$mode" in
+  now) query='lang=ko&F&format=3' ;;
+  today) query='lang=ko&F&1' ;;
+  forecast) query='lang=ko&F' ;;
+esac
+
+exec "$curl_bin" --fail --silent --show-error --location --compressed --max-time 20 "https://wttr.is/${encoded}?${query}"
